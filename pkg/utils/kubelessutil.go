@@ -559,6 +559,7 @@ func mergeMap(dst, src map[string]string) map[string]string {
 }
 
 // EnsureFuncDeployment creates/updates a function deployment
+// 构建 deployment
 func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Function, or []metav1.OwnerReference, lr *langruntime.Langruntimes, prebuiltRuntimeImage, provisionImage string, imagePullSecrets []v1.LocalObjectReference) error {
 
 	var err error
@@ -710,6 +711,7 @@ func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Func
 		}
 	}
 
+	// 创建 deployment
 	_, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Create(dpm)
 	if err != nil && k8sErrors.IsAlreadyExists(err) {
 		// In case the Deployment already exists we should update

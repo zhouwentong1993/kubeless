@@ -171,6 +171,7 @@ func (c *FunctionController) processNextItem() bool {
 	}
 	defer c.queue.Done(key)
 
+	// 核心处理流程
 	err := c.processItem(key.(string))
 	if err == nil {
 		// No error, reset the ratelimit counters
@@ -208,7 +209,6 @@ func (c *FunctionController) processItem(key string) error {
 	}
 
 	funcObj := obj.(*kubelessApi.Function)
-
 	// Function API object is marked for deletion (DeletionTimestamp != nil), so lets process the delete update
 	if funcObj.ObjectMeta.DeletionTimestamp != nil {
 
@@ -255,7 +255,9 @@ func (c *FunctionController) processItem(key string) error {
 
 // startImageBuildJob creates (if necessary) a job that will build an image for the given function
 // returns the name of the image, a boolean indicating if the build job has been created and an error
+// 构建镜像
 func (c *FunctionController) startImageBuildJob(funcObj *kubelessApi.Function, or []metav1.OwnerReference) (string, bool, error) {
+	c.logger.Infof("start build image job,funcObj: %v,or: %v", funcObj, or)
 	imagePullSecret, err := c.clientset.CoreV1().Secrets(funcObj.ObjectMeta.Namespace).Get("kubeless-registry-credentials", metav1.GetOptions{})
 	if err != nil {
 		return "", false, fmt.Errorf("Unable to locate registry credentials to build function image: %v", err)
@@ -295,6 +297,8 @@ func (c *FunctionController) startImageBuildJob(funcObj *kubelessApi.Function, o
 
 // ensureK8sResources creates/updates k8s objects (deploy, svc, configmap) for the function
 func (c *FunctionController) ensureK8sResources(funcObj *kubelessApi.Function) error {
+
+	logrus.Infof("[ensureK8sResources],functionController.: %v    ,funcObj: %v", c, funcObj)
 	if len(funcObj.ObjectMeta.Labels) == 0 {
 		funcObj.ObjectMeta.Labels = make(map[string]string)
 	}
@@ -319,20 +323,24 @@ func (c *FunctionController) ensureK8sResources(funcObj *kubelessApi.Function) e
 		return err
 	}
 
+	// 构建 configmap
 	err = utils.EnsureFuncConfigMap(c.clientset, funcObj, or, c.langRuntime)
 	if err != nil {
 		return err
 	}
 
+	// 构建 service
 	err = utils.EnsureFuncService(c.clientset, funcObj, or)
 	if err != nil {
 		return err
 	}
 
+	// 构建镜像。
 	prebuiltImage := ""
 	if len(funcObj.Spec.Deployment.Spec.Template.Spec.Containers) > 0 && funcObj.Spec.Deployment.Spec.Template.Spec.Containers[0].Image != "" {
 		prebuiltImage = funcObj.Spec.Deployment.Spec.Template.Spec.Containers[0].Image
 	}
+	logrus.Infof("[image build],prebuiltImage: %s,enable-build-step: %s", prebuiltImage, c.config.Data["enable-build-step"])
 	// Skip image build step if using a custom runtime
 	if prebuiltImage == "" {
 		if c.config.Data["enable-build-step"] == "true" {
@@ -357,6 +365,7 @@ func (c *FunctionController) ensureK8sResources(funcObj *kubelessApi.Function) e
 		return err
 	}
 
+	// 创建 HPA
 	if funcObj.Spec.HorizontalPodAutoscaler.Name != "" && funcObj.Spec.HorizontalPodAutoscaler.Spec.ScaleTargetRef.Name != "" {
 		funcObj.Spec.HorizontalPodAutoscaler.OwnerReferences = or
 		if funcObj.Spec.HorizontalPodAutoscaler.Spec.Metrics[0].Type == v2beta1.ObjectMetricSourceType {
